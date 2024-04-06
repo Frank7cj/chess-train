@@ -9,6 +9,13 @@ import chess
 import chess.engine
 import chess.pgn
 
+DEFAULT_MAX_ENGINE_LIMIT = 1
+
+
+class CaseSensitiveConfigParser(configparser.ConfigParser):
+    def optionxform(self, optionstr):
+        return optionstr
+
 
 def display_board(board: chess.Board, bot_perspective: chess.Color):
     r = range(8, 0, -1) if bot_perspective == chess.WHITE else range(1, 9, 1)
@@ -80,6 +87,7 @@ def get_user_move(board: chess.Board, user_input: str):
 def play_chess(engine_path: str = "stockfish/stockfish-ubuntu-x86-64-avx2",
                file: TextIOWrapper = None,
                player_side: chess.Color = chess.WHITE,
+               engine_config: chess.engine.ConfigMapping = {},
                engine_limits: chess.engine.Limit = chess.engine.Limit()):
     if file is not None:
         file.write('='*50 + '\n')
@@ -114,7 +122,9 @@ def play_chess(engine_path: str = "stockfish/stockfish-ubuntu-x86-64-avx2",
                     except:
                         continue
             else:
-                result = engine.play(board, engine_limits)
+                result = engine.play(board=board,
+                                     limit=engine_limits,
+                                     options=engine_config)
                 move = result.move
                 print(f"AI plays: {move.uci()}")
 
@@ -141,21 +151,33 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    config = configparser.ConfigParser()
+    config = CaseSensitiveConfigParser()
     config.read(args.configFile)
-    limit_params = dict(config['EngineLimits'])
+
+    # Player Config
+    player_side = config['PlayerConfig']['side']\
+        if config.has_option('PlayerConfig', 'side')\
+        else random.choice([chess.BLACK, chess.WHITE])
+    player_side = chess.WHITE if player_side == 'WHITE' else chess.BLACK
+
+    # Engine Config
+    engine_config = dict(config['EngineConfig'])\
+        if config.has_section('EngineConfig') else {}
+
+    # Engine Limits
+    limit_params = dict(config['EngineLimits']) \
+        if config.has_section('EngineLimits') else {}
     limit_params = {key: int(value) if str(value).isdigit()
                     else value
                     for key, value in limit_params.items()}
+    if limit_params.get('time') is None:
+        limit_params['time'] = DEFAULT_MAX_ENGINE_LIMIT
+    engine_limits = chess.engine.Limit(**limit_params)
 
-    player_side = config['PlayerConfig']['side'] if config.has_option('PlayerConfig', 'side')\
-        else random.choice([chess.BLACK, chess.WHITE])
-    player_side = chess.WHITE if player_side == 'WHITE' else chess.BLACK
-    limit = chess.engine.Limit(**limit_params)
+    file = open(config['GameConfig']['export_file'], "a")\
+        if config.has_option('GameConfig', 'export_file') else None
 
-    file = open(config['GameConfig']['export_file'], "a") if config.has_option(
-        'GameConfig', 'export_file') else None
-
-    play_chess(file=file, player_side=player_side, engine_limits=limit)
+    play_chess(file=file, player_side=player_side,
+               engine_limits=engine_limits, engine_config=engine_config)
 
     file.close()

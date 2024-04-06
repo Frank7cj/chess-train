@@ -5,6 +5,10 @@ __pycache__/*
 # Enviroment
 stockfish/*
 *.config
+!template.config
 
 # Output
 *.txt
+
+# Visual Studio Code
+.vscode/*
