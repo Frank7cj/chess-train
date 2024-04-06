@@ -1,14 +1,15 @@
+# Output
+*.txt
+
 # Python
 .venv/*
 __pycache__/*
+!requirements.txt
 
 # Enviroment
 stockfish/*
 *.config
 !template.config
-
-# Output
-*.txt
 
 # Visual Studio Code
 .vscode/*
