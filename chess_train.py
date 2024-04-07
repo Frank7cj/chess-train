@@ -1,8 +1,9 @@
 import argparse
 import configparser
-import datetime
+import pickle
 import random
 import re
+from datetime import datetime
 from io import TextIOWrapper
 
 import chess
@@ -10,6 +11,12 @@ import chess.engine
 import chess.pgn
 
 DEFAULT_MAX_ENGINE_LIMIT = 1
+COMMANDS_INFO = """
+Commands (User input):
+    - !help: Show this info about available commands
+    - !bestMove: Plays best move with help of the engine
+    - !saveState [saveFilePath]: Save current game board in saveFilePath (default: log_YYYYMMDDhhmmss.chess)
+"""
 
 
 class CaseSensitiveConfigParser(configparser.ConfigParser):
@@ -85,25 +92,29 @@ def get_user_move(board: chess.Board, user_input: str):
 
 
 def play_chess(engine_path: str = "stockfish/stockfish-ubuntu-x86-64-avx2",
-               file: TextIOWrapper = None,
+               log_file: TextIOWrapper = None,
                player_side: chess.Color = chess.WHITE,
                engine_config: chess.engine.ConfigMapping = {},
-               engine_limits: chess.engine.Limit = chess.engine.Limit()):
-    if file is not None:
-        file.write('='*50 + '\n')
-        file.write("{datetime} | CHESS TRAIN\n".format(
-            datetime=datetime.datetime.now().isoformat()))
-        file.write('-'*50 + '\n')
+               engine_limits: chess.engine.Limit = chess.engine.Limit(),
+               saved_game: chess.Board = None):
+    if log_file is not None:
+        log_file.write('='*50 + '\n')
+        log_file.write("{datetime} | CHESS TRAIN\n".format(
+            datetime=datetime.now().isoformat()))
+        log_file.write('-'*50 + '\n')
         player_color_name = 'WHITE' if player_side == chess.WHITE else 'BLACK'
-        file.write("\tPlayer side: {player_side}\n".format(
+        log_file.write("\tPlayer side: {player_side}\n".format(
             player_side=player_color_name))
-        file.write("\tEngine Limits\n")
+        log_file.write("\tEngine Limits\n")
         for key, value in engine_limits.__dict__.items():
             if value is not None:
-                file.write("\t\t{key}: {value}\n".format(key=key, value=value))
-        file.write('='*50 + '\n')
+                log_file.write("\t\t{key}: {value}\n".format(key=key, value=value))
+        log_file.write('='*50 + '\n')
 
-    board = chess.Board()
+    if saved_game != None:
+        board = saved_game
+    else:
+        board = chess.Board()
     game = chess.pgn.Game()
     game.setup(board)
     node = game
@@ -113,8 +124,24 @@ def play_chess(engine_path: str = "stockfish/stockfish-ubuntu-x86-64-avx2",
         while not board.is_game_over():
             if board.turn == player_side:
                 user_input = input(
-                    "Enter your move (in UCI format, e.g., 'e2e4') or !help for best move: ")
+                    "Enter your move (in UCI format, e.g., 'e2e4') or !help for commands info: ")
                 if user_input == '!help':
+                    print(COMMANDS_INFO)
+                    continue
+                elif user_input == '!saveState' or user_input[:11] == '!saveState ':
+                    save_file_path = 'log_' + datetime.now().strftime("%Y%m%d%H%M%S") + '.chess'
+                    if len(user_input) > 11 and user_input.split(' ', 2)[1].strip() != '':
+                        save_file_path = user_input.split(' ', 2)[1]
+
+                    with open(save_file_path, 'wb') as file:
+                        pickle.dump(board, file)
+
+                    print("Saved chess game in " + save_file_path)
+                    print(
+                        "Remember to resume your game with --resumeGame [saveFilePath] argument")
+
+                    return 0
+                elif user_input == '!bestMove':
                     move = engine.play(board, chess.engine.Limit())
                 else:
                     try:
@@ -133,13 +160,13 @@ def play_chess(engine_path: str = "stockfish/stockfish-ubuntu-x86-64-avx2",
 
             node = node.add_main_variation(
                 chess.Move.from_uci(str(board.peek())))
-            if file is not None:
-                save_move(node, file)
+            if log_file is not None:
+                save_move(node, log_file)
 
     print("Game Over")
     print("Result: ", board.result())
 
-    file.write("Result: " + board.result() + "\n\n")
+    log_file.write("Result: " + board.result() + "\n\n")
 
 
 if __name__ == "__main__":
@@ -149,10 +176,16 @@ if __name__ == "__main__":
                         help='Specify a config file with AnalysisLimits',
                         required=False)
 
+    parser.add_argument('--resumeGame',
+                        type=str,
+                        help='Specify a saved game file',
+                        required=False)
+
     args = parser.parse_args()
 
     config = CaseSensitiveConfigParser()
-    config.read(args.configFile)
+    if args.configFile != None:
+        config.read(args.configFile)
 
     # Player Config
     player_side = config['PlayerConfig']['side']\
@@ -174,10 +207,18 @@ if __name__ == "__main__":
         limit_params['time'] = DEFAULT_MAX_ENGINE_LIMIT
     engine_limits = chess.engine.Limit(**limit_params)
 
-    file = open(config['GameConfig']['export_file'], "a")\
-        if config.has_option('GameConfig', 'export_file') else None
+    log_file = open(config['GameConfig']['log_file'], "a")\
+        if config.has_option('GameConfig', 'log_file') else None
 
-    play_chess(file=file, player_side=player_side,
-               engine_limits=engine_limits, engine_config=engine_config)
+    saved_game = None
+    if args.resumeGame != None:
+        with open(args.resumeGame, 'rb') as file:
+            saved_game = pickle.load(file)
+
+    play_chess(log_file=log_file,
+               player_side=player_side,
+               engine_limits=engine_limits,
+               engine_config=engine_config,
+               saved_game=saved_game)
 
     file.close()
