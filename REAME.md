@@ -34,7 +34,7 @@ pip install -r requirements.txt
 
 1. **Install Stockfish**: Download and install Stockfish or another UCI-compatible chess engine. Update the `engine_path` in the code if necessary.
 2. **Configuration**: Copy `template.config` to a new file (e.g., `config.config`) and update the settings as needed:
-   - `GameConfig`: Specify the log file path.
+   - `GameConfig`: Specify the log file and engine path.
    - `PlayerConfig`: Set the player side (`WHITE` or `BLACK`) and whether to show scores.
    - `EngineConfig`: Configure engine-specific parameters.
    - `EngineLimits`: Set limits for time, depth, nodes, or mate search.

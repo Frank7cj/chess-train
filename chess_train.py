@@ -96,7 +96,8 @@ def play_chess(engine_path: str = "stockfish/stockfish-ubuntu-x86-64-avx2",
                player_side: chess.Color = chess.WHITE,
                engine_config: chess.engine.ConfigMapping = {},
                engine_limits: chess.engine.Limit = chess.engine.Limit(),
-               saved_game: chess.Board = None):
+               saved_game: chess.Board = None,
+               show_score: bool = False):
     if log_file is not None:
         log_file.write('='*50 + '\n')
         log_file.write("{datetime} | CHESS TRAIN\n".format(
@@ -108,7 +109,8 @@ def play_chess(engine_path: str = "stockfish/stockfish-ubuntu-x86-64-avx2",
         log_file.write("\tEngine Limits\n")
         for key, value in engine_limits.__dict__.items():
             if value is not None:
-                log_file.write("\t\t{key}: {value}\n".format(key=key, value=value))
+                log_file.write("\t\t{key}: {value}\n".format(
+                    key=key, value=value))
         log_file.write('='*50 + '\n')
 
     if saved_game != None:
@@ -122,6 +124,15 @@ def play_chess(engine_path: str = "stockfish/stockfish-ubuntu-x86-64-avx2",
 
     with chess.engine.SimpleEngine.popen_uci(engine_path) as engine:
         while not board.is_game_over():
+            if show_score:
+                white_prob, black_prob = calculate_win_probabilities(
+                    board, engine, engine_limits)
+                if player_side == chess.WHITE:
+                    player_score = white_prob
+                else:
+                    player_score = black_prob
+                print(f"Player win probability: {player_score:.2%}")
+
             if board.turn == player_side:
                 user_input = input(
                     "Enter your move (in UCI format, e.g., 'e2e4') or !help for commands info: ")
@@ -161,6 +172,9 @@ def play_chess(engine_path: str = "stockfish/stockfish-ubuntu-x86-64-avx2",
             node = node.add_main_variation(
                 chess.Move.from_uci(str(board.peek())))
             if log_file is not None:
+                if show_score:
+                    log_file.write(
+                        f"Player win probability: {player_score:.2%}\n")
                 save_move(node, log_file)
 
     print("Game Over")
@@ -193,6 +207,19 @@ if __name__ == "__main__":
         else random.choice([chess.BLACK, chess.WHITE])
     player_side = chess.WHITE if player_side == 'WHITE' else chess.BLACK
 
+    show_score = config['PlayerConfig'].getboolean('show_score')\
+        if config.has_option('PlayerConfig', 'show_score')\
+        else False
+    if show_score:
+        print("Showing score enabled")
+    else:
+        print("Showing score disabled")
+
+    # Engine Path
+    engine_path = config['EngineConfig']['path']\
+        if config.has_option('EngineConfig', 'path')\
+        else "stockfish/stockfish-ubuntu-x86-64-avx2"
+
     # Engine Config
     engine_config = dict(config['EngineConfig'])\
         if config.has_section('EngineConfig') else {}
@@ -215,10 +242,12 @@ if __name__ == "__main__":
         with open(args.resumeGame, 'rb') as file:
             saved_game = pickle.load(file)
 
-    play_chess(log_file=log_file,
+    play_chess(engine_path=engine_path,
+               log_file=log_file,
                player_side=player_side,
                engine_limits=engine_limits,
                engine_config=engine_config,
-               saved_game=saved_game)
+               saved_game=saved_game,
+               show_score=show_score)
 
     file.close()
